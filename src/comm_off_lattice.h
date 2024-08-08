@@ -29,6 +29,8 @@ class CommOffLattice : protected Pointers {
   void sector(int);
   void reverse_sector(int);
 
+  int get_me() const;
+
  private:
   int me,nprocs;
 

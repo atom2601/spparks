@@ -1163,3 +1163,11 @@ void CommOffLattice::fill_chunk(int isector, int ichunk,
   chunkhi[isector][ichunk][1] = jhi;
   chunkhi[isector][ichunk][2] = khi;
 }
+
+/* ----------------------------------------------------------------------
+   access "me" variable in other files
+------------------------------------------------------------------------- */
+
+int CommOffLattice::get_me() const {
+  return me;
+}

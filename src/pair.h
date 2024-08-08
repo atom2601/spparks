@@ -33,14 +33,46 @@ class Pair : protected Pointers {
   virtual double init_one(int, int) {return 0.0;}
   virtual double energy(int, int, int *, double **, int *) = 0;
 
+   // int comm_forward;          // size of forward communication (0 if none)
+   // int comm_reverse;          // size of reverse communication (0 if none)
+
+  int restartinfo;                     // 1 if pair style writes restart info
+  int one_coeff;                       // 1 if allows only one coeff * * call
+  int manybody_flag;                   // 1 if a manybody potential
+  int unit_convert_flag;               // value != 0 indicates support for unit conversion
+
+//   int evflag;
+//   int eflag_either, eflag_global, eflag_atom;
+//   int vflag_either, vflag_global, vflag_atom, cvflag_atom;
+
  protected:
   int allocated;                       // 0/1 = whether arrays are allocated
   int **setflag;
   double **cutsq;
   int mix_flag;
+  int vflag_fdotr;
 
   double mix_energy(double, double, double, double);
   double mix_distance(double, double);
+
+  // for mapping of elements to atom types and parameters
+  // mostly used for manybody potentials (here the eam)
+  // "elements" here will be the different number of sites
+  int nelements;   // # of unique elements
+  char **elements; // names of unique elements
+  int *map;
+  void map_element2type(int, char **, bool update_setflag = true); 
+
+   // various lammps functions not used here
+   //     void ev_init(int eflag, int vflag, int alloc = 1)
+   //   {
+   //     if (eflag || vflag)
+   //       ev_setup(eflag, vflag, alloc);
+   //     else
+   //       ev_unset();
+   //   }
+   //   virtual void ev_setup(int, int, int alloc = 1);
+   //   void ev_unset();
 };
 
 }
