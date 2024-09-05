@@ -18,9 +18,9 @@
 ------------------------------------------------------------------------- */
 
 #include "tokenizer.h"
-#include "format.h"
 #include "utils.h"
 
+#include <fmt/format.h>
 #include <utility>
 
 using namespace SPPARKS_NS;

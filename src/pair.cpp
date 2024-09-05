@@ -118,7 +118,7 @@ double Pair::mix_distance(double sig1, double sig2)
 void Pair::map_element2type(int narg, char **arg, bool update_setflag)
 {
   int i,j;
-  // const int ntypes = pair->ntypes;
+  // const int ntypes = atom->ntypes;
 
   // read args that map atom types to elements in potential file
   // map[i] = which element the Ith atom type is, -1 if "NULL"

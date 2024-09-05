@@ -26,6 +26,8 @@
 #include "memory.h"
 #include "error.h"
 
+#include <iostream>
+
 using namespace SPPARKS_NS;
 
 #define DELTA 10000

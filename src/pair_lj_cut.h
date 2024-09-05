@@ -31,6 +31,7 @@ class PairLJCut : public Pair {
   void settings(int, char **);
   void coeff(int, char **);
   double init_one(int, int);
+  void init_style() override;
 
  protected:
   double cut_global;

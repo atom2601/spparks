@@ -66,9 +66,17 @@ Pair *Potential::new_pair(const char *style)
 {
   if (strcmp(style,"none") == 0) return NULL;
 
+  #define INIT_PAIR_CLASS \
+  static bool first_pair = true;
+
+  #define PairStyle(key, Class) \
+    if (first_pair) { \
+      first_pair = false; \
+      if (strcmp(style,#key) == 0) return new Class(spk); \
+      } else if (strcmp(style, #key) == 0) return new Class(spk);
+
 #define PAIR_CLASS
-#define PairStyle(key,Class) \
-  else if (strcmp(style,#key) == 0) return new Class(spk);
+  INIT_PAIR_CLASS // init first pair
 #include "style_pair.h"
 #undef PAIR_CLASS
 

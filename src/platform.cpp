@@ -20,10 +20,10 @@
 
 #include "platform.h"
 
-#include "format.h"
 #include "text_file_reader.h"
 #include "utils.h"
 
+#include <fmt/format.h>
 #include <deque>
 #include <exception>
 // #include <mpi.h>

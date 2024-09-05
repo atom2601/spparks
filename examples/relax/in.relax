@@ -2,27 +2,30 @@
 
 seed		 56789
 
-app_style	 relax 0.5 
+app_style	 relax 0.01
 
-dimension	 2
-lattice		 sq/8n 1.0
-region		 box block 0 32 0 32 -0.5 0.5
+dimension	 3
+lattice		 bcc 2.8553
+region		 box block 0 6 0 6 0 6
 create_box	 box
 create_sites	 box
 
 set		 site range 1 1
 
-pair_style	 lj/cut 1 2.5
-pair_coeff	 1 1 1.0 1.0
+#pair_style	 lj/cut 1 5.7
+#pair_coeff	 1 1 0.706 2.26738
+
+pair_style eam/fs 2
+pair_coeff * * FeHe.eam.fs Fe He
 
 sweep		 random
 sector		 yes
 
-temperature	 1.0
+temperature	 0.0646
 
-stats            100.0
-dump             1 text 100.0 dump.relax
+stats            1.0
+dump             1 text 1 dump7.relax
 
 diag_style	 energy
 
-run              5000.0
+run              1.0

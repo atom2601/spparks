@@ -17,14 +17,14 @@
    Contributing authors: Richard Berger (Temple U)
 ------------------------------------------------------------------------- */
 
-#include "potential_file_reader.h"
-
+#include "app_off_lattice.h"
 #include "comm_off_lattice.h"
-#include "error.h"
 #include "text_file_reader.h"
+#include "potential_file_reader.h"
 #include "tokenizer.h"
 #include "utils.h"
-#include "format.h"
+#include "error.h"
+#include <fmt/format.h>
 // #include "update.h"
 
 
@@ -56,7 +56,8 @@ PotentialFileReader::PotentialFileReader(SPPARKS *spk, const std::string &filena
     reader(nullptr), filename(filename), filetype(potential_name + name_suffix),
     unit_convert(auto_convert)
 {
-    if (comm->get_me() != 0) { error->one(FLERR, "FileReader should only be called by proc 0!");}
+    MPI_Comm_rank(world,&me);
+    if (me != 0) { error->one(FLERR, "FileReader should only be called by proc 0!");}
 
     try {
         reader = open_potential(filename);
@@ -270,39 +271,39 @@ TextFileReader *PotentialFileReader::open_potential(const std::string &path)
     std::string filepath = utils::get_potential_file_path(path);
 
     if (!filepath.empty()) {
-        std::string unit_style = spk->update->unit_style;
+        // std::string unit_style = spk->update->unit_style;
         std::string date = utils::get_potential_date(filepath, filetype);
         std::string units = utils::get_potential_units(filepath, filetype);
 
         if (!date.empty())
             utils::logmesg(spk, "Reading {} file {} with DATE: {}\n", filetype, filename, date);
 
-        if (units.empty()) {
-            unit_convert = utils::NOCONVERT;
-        } else {
-            if (units == unit_style) {
-                unit_convert = utils::NOCONVERT;
-            } else {
-                if ((units == "metal") && (unit_style == "real") && (unit_convert & utils::METAL2REAL)) {
-                    unit_convert = utils::METAL2REAL;
-                } else if ((units == "real") && (unit_style == "metal") &&
-                            (unit_convert & utils::REAL2METAL)) {
-                                unit_convert = utils::REAL2METAL;
-                            } else {
-                                std::string formattedMesg = fmt::format("{} file {} requires {} units but {} units are in use",
-                                                                        filetype, filename, units, unit_style);
-                                const char* cstr = formattedMesg.c_str();
-                                spk->error->one(FLERR, cstr);
+        // if (units.empty()) {
+        //     unit_convert = utils::NOCONVERT;
+        // } else {
+        //     if (units == unit_style) {
+        //         unit_convert = utils::NOCONVERT;
+        //     } else {
+        //         if ((units == "metal") && (unit_style == "real") && (unit_convert & utils::METAL2REAL)) {
+        //             unit_convert = utils::METAL2REAL;
+        //         } else if ((units == "real") && (unit_style == "metal") &&
+        //                     (unit_convert & utils::REAL2METAL)) {
+        //                         unit_convert = utils::REAL2METAL;
+        //                     } else {
+        //                         std::string formattedMesg = fmt::format("{} file {} requires {} units but {} units are in use",
+        //                                                                 filetype, filename, units, unit_style);
+        //                         const char* cstr = formattedMesg.c_str();
+        //                         spk->error->one(FLERR, cstr);
                 
-                            }
-            }
-        }
-        if (unit_convert != utils::NOCONVERT) {
-          std::string formattedMesg = fmt::format("Converting {} in {} units to {} units",
-                                                  filetype, units, unit_style);
-          const char* cstr = formattedMesg.c_str();
-          spk->error->warning(FLERR, cstr);
-        }
+        //                     }
+        //     }
+        // }
+        // if (unit_convert != utils::NOCONVERT) {
+        //   std::string formattedMesg = fmt::format("Converting {} in {} units to {} units",
+        //                                           filetype, units, unit_style);
+        //   const char* cstr = formattedMesg.c_str();
+        //   spk->error->warning(FLERR, cstr);
+        // }
         return new TextFileReader(filepath, filetype);
     }
     return nullptr;

@@ -17,16 +17,18 @@
    Contributing authors: Stephen Foiles (SNL), Murray Daw (SNL)
 ------------------------------------------------------------------------- */
 
-#include "pair_eam_fs.h"
-
+#include "mpi.h"
+#include "app_off_lattice.h"
 #include "comm_off_lattice.h"
+#include "pair_eam_fs.h"
+#include "potential.h"
+#include "potential_file_reader.h"
 #include "memory.h"
 #include "error.h"
-#include "potential_file_reader.h"
-#include "potential.h"
 #include "utils.h"
 
 #include <cstring>
+#include <iostream>
 
 using namespace SPPARKS_NS;
 
@@ -34,6 +36,7 @@ using namespace SPPARKS_NS;
 
 PairEAMFS::PairEAMFS(SPPARKS *spk) : PairEAM(spk)
 {
+    MPI_Comm_rank(world,&me);
     one_coeff = 1;
     manybody_flag = 1;
     he_flag = 0;
@@ -51,8 +54,9 @@ void PairEAMFS::coeff(int narg, char **arg)
 
   if (!allocated) allocate();
 
-  if (narg != 3 + potential->pair->ntypes)
-    error->all(FLERR, "Number of element to type mappings does not match number of atom types");
+  // if (narg != 3 + potential->pair->ntypes) {
+  //   std::cout << potential->pair->ntypes <<" , "<< narg << std::endl;
+  //   error->all(FLERR, "Number of element to type mappings does not match number of atom types"); }
 
   // read EAM Finnis-Sinclair file
 
@@ -117,7 +121,7 @@ void PairEAMFS::read_file(char *filename)
   Fs *file = fs;
 
   // read potential file
-  if (comm->get_me() == 0) {
+  if (me == 0) {
     PotentialFileReader reader(spk, filename, he_flag ? "eam/he" : "eam/fs", unit_convert_flag);
 
     // transparently convert units for supported conversions
@@ -163,10 +167,11 @@ void PairEAMFS::read_file(char *filename)
             values = reader.next_values(2);
             values.next_int(); // ignore
             file->mass[i] = values.next_double();
+            // std::cout << file->mass[i] << std::endl;
 
             reader.next_dvector(&file->frho[i][1], file->nrho);
             if (unit_convert) {
-              for (int j = 1; j <= file->nrho; ++j) file->frho[i][j] *= conversion_factor;
+              for (int j = 1; j <= file->nrho; ++j) file->frho[i][j]; // *= conversion_factor;
             }
 
             for (int j = 0; j < file->nelements; j++) {
@@ -178,7 +183,7 @@ void PairEAMFS::read_file(char *filename)
           for (int j = 0; j <= i; j++) {
             reader.next_dvector(&file->z2r[i][j][1], file->nr);
             if (unit_convert) {
-              for (int k = 1; k <= file->nr; ++k) file->z2r[i][j][k] *= conversion_factor;
+              for (int k = 1; k <= file->nr; ++k) file->z2r[i][j][k] ;//*= conversion_factor;
             }
           }
         }
@@ -192,7 +197,7 @@ void PairEAMFS::read_file(char *filename)
   // MPI STUFF ??????????
 
   // allocate memory on other procs
-  if (comm->get_me() != 0) {
+  if (me != 0) {
     file->elements = new char *[file->nelements];
     for (int i =0; i < file->nelements; i++) file->elements[i] = nullptr;
     memory->create(file->mass, file->nelements, "pair:mass");
@@ -267,7 +272,7 @@ void PairEAMFS::file2array()
   // allocate rhor arrays
   // nrhor = square of # of fs elements
 
-  nrho = fs->nelements * fs->nelements;
+  nrhor = fs->nelements * fs->nelements;
   memory->destroy(rhor);
   memory->create(rhor, nrhor, nr + 1, "pair:rhor");
 

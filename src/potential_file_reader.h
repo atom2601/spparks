@@ -42,8 +42,6 @@ class PotentialFileReader : protected Pointers {
                       const std::string &potential_name, const std::string &name_suffix,
                       const int auto_convert = 0);
   ~PotentialFileReader() override;
-  
-  class CommOffLattice *comm;
 
   void ignore_comments(bool value);
 
@@ -64,6 +62,9 @@ class PotentialFileReader : protected Pointers {
 
   // unit conversion info
   int get_unit_convert() const { return unit_convert; }
+
+ private:
+  int me;
 };
 
 } // namespace SPPARKS_NS

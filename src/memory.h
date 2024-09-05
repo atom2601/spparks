@@ -116,7 +116,7 @@ class Memory : protected Pointers {
       TYPE *data = (TYPE *) smalloc(nbytes,name);
       nbytes = ((bigint) sizeof(TYPE *)) * n1;
       array = (TYPE **) smalloc(nbytes,name);
-      
+
       bigint n = 0;
       for (int i = 0; i < n1; i++) {
 	array[i] = &data[n];

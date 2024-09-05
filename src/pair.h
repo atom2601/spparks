@@ -29,7 +29,7 @@ class Pair : protected Pointers {
 
   virtual void settings(int, char **) = 0;
   virtual void coeff(int, char **) = 0;
-  virtual void init_style() {}
+  virtual void init_style() {};
   virtual double init_one(int, int) {return 0.0;}
   virtual double energy(int, int, int *, double **, int *) = 0;
 

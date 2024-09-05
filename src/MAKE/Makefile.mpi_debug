@@ -7,13 +7,13 @@ SHELL = /bin/sh
 # specify flags and libraries needed for your compiler
 
 CC =		mpicxx
-CCFLAGS =	-g -O -std=c++11
+CCFLAGS =	-g -O -std=c++11 -I../fmt/include
 SHFLAGS =	-fPIC
 DEPFLAGS =	-M
 
 LINK =		mpicxx
-LINKFLAGS =	-g -O
-LIB =	  	
+LINKFLAGS =	-g -O -L../fmt
+LIB =	  	-lfmt
 SIZE =		size
 
 ARCHIVE =	ar

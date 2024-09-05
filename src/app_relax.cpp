@@ -20,6 +20,8 @@
 #include "random_park.h"
 #include "error.h"
 
+#include <iostream>
+
 using namespace SPPARKS_NS;
 
 /* ---------------------------------------------------------------------- */
@@ -75,7 +77,7 @@ void AppRelax::init_app()
   int flag = 0;
   for (int i = 0; i < nlocal; i++)
     if (type[i] < 1 || type[i] > ntypes) flag = 1;
-  int flagall;
+  int flagall = 0;
   MPI_Allreduce(&flag,&flagall,1,MPI_INT,MPI_SUM,world);
   if (flagall) error->all(FLERR,"One or more sites have invalid values");
 }

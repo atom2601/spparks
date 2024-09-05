@@ -1,0 +1,53 @@
+SPPARKS (6 Sep 2023)
+# SPPARKS relaxation test
+
+seed		 56789
+
+app_style	 relax 0.01
+
+dimension	 3
+lattice		 bcc 2.8553
+region		 box block 0 6 0 6 0 6
+create_box	 box
+Created box = (0 0 0) to (17.1318 17.1318 17.1318)
+  1 by 1 by 1 processor grid
+create_sites	 box
+Creating sites ...
+  432 sites
+
+set		 site range 1 1
+  432 settings made for site
+
+#pair_style	 lj/cut 1 5.7
+#pair_coeff	 1 1 0.706 2.26738
+
+pair_style eam/fs 2
+pair_coeff * * FeHe.eam.fs Fe He
+
+sweep		 random
+sector		 yes
+
+temperature	 0.0646
+
+stats            1.0
+dump             1 text 1 dump7.relax
+
+diag_style	 energy
+
+run              1.0
+Bins/proc: 2 2 2
+Bin sizes: 8.5659 8.5659 8.5659
+Setting up run ...
+Running with 32-bit site IDs
+Memory usage per processor = 0 Mbytes
+      Time    Naccept    Nreject    Nsweeps        CPU     Energy
+         0          0          0          0          0          0
+         1        421         40          1    0.00574          0
+Loop time of 0.005746 on 1 procs
+
+Solve time (%) = 0.002762 (48.0682)
+Update time (%) = 0 (0)
+Comm  time (%) = 0.000158 (2.74974)
+Outpt time (%) = 0.002824 (49.1472)
+App   time (%) = 0 (0)
+Other time (%) = 2e-06 (0.0348068)

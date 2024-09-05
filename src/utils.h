@@ -23,7 +23,7 @@
 
 /*! \file utils.h */
 
-#include "format.h"
+#include <fmt/format.h>
 #include "spktype.h"
 
 // #include <mpi.h>
@@ -37,8 +37,6 @@ class Error;
 class SPPARKS;
 
 namespace utils {
-
-    class CommOffLattice *comm;
 
     /*! Match text against a simplified regex pattern
      * 
@@ -253,7 +251,7 @@ namespace utils {
     * conversion or ``utils::NOCONVERT``.
     *
     * \param name          file- or pathname of the potential file
-    * \param lmp           pointer to top-level LAMMPS class instance
+    * \param spk           pointer to top-level LAMMPS class instance
     * \param auto_convert  pointer to unit conversion bitmask or ``nullptr``
     * \return              FILE pointer of the opened potential file or ``nullptr`` */
 

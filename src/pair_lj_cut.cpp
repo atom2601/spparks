@@ -190,3 +190,5 @@ double PairLJCut::init_one(int i, int j)
 
   return cut[i][j];
 }
+
+void PairLJCut::init_style() {}

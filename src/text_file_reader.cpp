@@ -19,10 +19,10 @@
 
 #include "text_file_reader.h"
 
-#include "format.h"
 #include "tokenizer.h"
 #include "utils.h"
 
+#include <fmt/format.h>
 #include <cstring>
 #include <utility>
 

@@ -17,9 +17,7 @@
 ------------------------------------------------------------------------- */
 
 #ifdef PAIR_CLASS
-// clang-format off
 PairStyle(eam/fs,PairEAMFS);
-// clang-format on
 #else
 
 #ifndef SPK_PAIR_EAM_FS_H
@@ -41,6 +39,9 @@ class PairEAMFS : virtual public PairEAM {
   void read_file(char *) override;
   void file2array() override;
   int he_flag;
+
+ private:
+  int me;
 };
 
 } // namespace SPPARKS_NS

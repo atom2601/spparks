@@ -17,14 +17,15 @@
    Contributing authors: Stephen Foiles (SNL), Murray Daw (SNL)
 ------------------------------------------------------------------------- */
 
-#include "pair_eam.h"
-
-#include "comm_off_lattice.h"
+#include "mpi.h"
 #include "math.h"
 #include "stdlib.h"
 #include "stdlib.h"
 #include "string.h"
+#include "app_off_lattice.h"
+#include "comm_off_lattice.h"
 #include "potential.h"
+#include "pair_eam.h"
 #include "memory.h"
 #include "error.h"
 #include "utils.h"
@@ -32,6 +33,7 @@
 #include "potential_file_reader.h"
 #include <cmath>
 #include <cstring>
+#include <iostream>
 
 using namespace SPPARKS_NS;
 
@@ -39,14 +41,15 @@ using namespace SPPARKS_NS;
 
 PairEAM::PairEAM(SPPARKS *spk) : Pair(spk) 
 {
+  MPI_Comm_rank(world,&me);
   restartinfo = 0;
   manybody_flag = 1;
   // embedstep = -1; taken from lammps, not used here
   unit_convert_flag = utils::get_supported_conversions(utils::ENERGY);
 
   nmax = 0;
-  rho = nullptr;
-  fp = nullptr;
+  // rho = nullptr;
+  // fp = nullptr;
   numforce = nullptr;
   numforce = nullptr;
   type2frho = nullptr;
@@ -79,9 +82,9 @@ PairEAM::PairEAM(SPPARKS *spk) : Pair(spk)
 
 PairEAM::~PairEAM()
 {
-    memory->destroy(rho);
-    memory->destroy(fp);
-    memory->destroy(numforce);
+    // memory->destroy(rho);
+    // memory->destroy(fp);
+    // memory->destroy(numforce);
 
     if (allocated) {
         memory->destroy(setflag);
@@ -102,6 +105,17 @@ PairEAM::~PairEAM()
       }
       memory->sfree(funcfl);
       funcfl = nullptr;
+    }
+
+    if (setfl) {
+      for (int i = 0; i < setfl->nelements; i++) delete [] setfl->elements[i];
+      delete [] setfl->elements;
+      memory->destroy(setfl->mass);
+      memory->destroy(setfl->frho);
+      memory->destroy(setfl->rhor);
+      memory->destroy(setfl->z2r);
+      delete setfl;
+      setfl = nullptr;
     }
 
     if (fs) {
@@ -125,13 +139,13 @@ PairEAM::~PairEAM()
 double PairEAM::energy(int i, int numneigh, int *neighs,
         double **x, int *type)
 {
-    int ii,j,jj,m,inum,jnum,itype,jtype;
+    int ii,j,m,inum,jnum,itype,jtype;
     double xtmp,ytmp,ztmp,delx,dely,delz,evdwl,fpair;
     double rsq,r,p,rhoip,rhojp,z2,z2p,recip,phip,psip,phi;
     double *coeff;
     int *ilist,*jlist,**firstneigh;
 
-    evdwl = 0.0;
+    // evdwl = 0.0;
     // ev_init(eflag,vflag); // used in lammps, not used here
 
     // grow energy and fp arrays if necessary
@@ -170,7 +184,10 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
     ztmp = x[i][2];
 
     double eng = 0.0;
-    for (jj = 0; jj < jnum; jj++) {
+
+    jlist = firstneigh[i];
+    rho = 0.0;
+    for (int jj = 0; jj < numneigh; jj++) {
         j = neighs[jj];
         jtype = type[j];
         delx = xtmp - x[j][0];
@@ -186,10 +203,10 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
             p -= m;
             p = MIN(p,1.0);
             coeff = rhor_spline[type2rhor[jtype][itype]][m];
-            rho[i] += ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+            rho += ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
             // if (newton_pair || j < nlocal) { // not using newton pair here
-            coeff = rhor_spline[type2rhor[itype][jtype]][m];
-            rho[j] += ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+            // coeff = rhor_spline[type2rhor[itype][jtype]][m];
+            // rho[j] += ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6]; // may not want this, lammps efficency code
             // }
         }
     }
@@ -203,23 +220,26 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
     // if rho > rhomax (e.g. due to close approach of two atoms),
     // will exceed table, so add linear term to conserve energy
 
-    for (ii = 0; ii < inum; i++) {
-        i = ilist[ii];
-        p = rho[i]*rdrho + 1.0;
-        m = static_cast<int> (p);
-        m = MAX(1,MIN(m,nrho-1));
-        p -= m;
-        p = MIN(p,1.0);
-        coeff = frho_spline[type2frho[type[i]]][m];
-        fp[i] = (coeff[0]*p + coeff[1])*p + coeff[2];
-        // if (eflag) { // in lammps if this is != zero, this computation happens, here 
-                     // it will always be done
-        phi = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
-        phi *= scale[type[i]][type[i]];
-        // if (eflag_global) eng_vdwl += phi; // these are accumualted per-atom energy/virial values
-        // if (eflag_atom) eatom[i] += phi;   // not used here
-        // }
-    }
+
+    // for (ii = 0; i < inum; i++) {
+      // i = ilist[ii];
+      // p = rho*rdrho + 1.0;
+      // m = static_cast<int> (p);
+      // m = MAX(1,MIN(m,nrho-1));
+      // p -= m;
+      // p = MIN(p,1.0);
+      // coeff = frho_spline[type2frho[type[i]]][m];
+      // fp = (coeff[0]*p + coeff[1])*p + coeff[2];
+      // // if (eflag) { // in lammps if this is != zero, this computation happens, here 
+      //               // it will always be done
+      // phi = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+      
+      // if (rho > rhomax) phi += fp * (rho-rhomax);
+      // phi *= scale[type[i]][type[i]];
+      // if (eflag_global) eng_vdwl += phi; // these are accumualted per-atom energy/virial values
+      // if (eflag_atom) eatom[i] += phi;   // not used here
+      // }
+    // }
 
     // communicate derivative of embedding function
 
@@ -227,10 +247,10 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
     // embedstep = timer->current_time; taken from lammps, not used here
 
     // compute forces on each atom
-    // loop over neighbors of my atoms
+    // loop over neighbors of my atoms   
 
-    for (jj = 0; jj < jnum; jj++) {
-        j = jlist[jj];
+    for (int jj = 0; jj < numneigh; jj++) {
+        j = neighs[jj];
         jtype = type[j];
         // j &= NEIGHMASK;
 
@@ -260,19 +280,20 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
             //      hence embed' = Fi(sum rho_ij) rhojp + Fj(sum rho_ji) rhoip
             // scale factor can be applied by thermodynamic integration
 
-            coeff = rhor_spline[type2rhor[itype][jtype]][m];
-            rhoip = (coeff[0]*p + coeff[1])*p + coeff[2];
-            coeff = rhor_spline[type2rhor[jtype][itype]][m];
-            rhojp = (coeff[0]*p + coeff[1])*p + coeff[2];
+            // below not used in SPPARKS
+            // coeff = rhor_spline[type2rhor[itype][jtype]][m];
+            // rhoip = (coeff[0]*p + coeff[1])*p + coeff[2];
+            // coeff = rhor_spline[type2rhor[jtype][itype]][m];
+            // rhojp = (coeff[0]*p + coeff[1])*p + coeff[2];
             coeff = z2r_spline[type2z2r[itype][jtype]][m];
-            z2p   = (coeff[0]*p + coeff[1])*p + coeff[2];
+            // z2p   = (coeff[0]*p + coeff[1])*p + coeff[2];
             z2    = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
 
             recip = 1.0/r;
-            phi = z2*recip;
-            phip = z2p*recip - phi*recip;
-            psip = fp[i]*rhojp + fp[j]*rhoip + phi;
-            fpair = -scale[itype][jtype]*psip*recip;
+            phi += z2*recip;
+            // phip = z2p*recip - phi*recip;
+            // psip = fp[i]*rhojp + fp[j]*rhoip + phi;
+            // fpair = -scale[itype][jtype]*psip*recip;
 
             eng += scale[itype][jtype]*phi;
 
@@ -289,7 +310,6 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
             // if (eflag) evdwl = scale[itype][jtype]*phi;
             // if (evflag) ev_tally(i,j,nlocal,newton_pair,evdwl,0.0,fpair,delx,dely,delz);
         }
-
     return eng;
     // if (vlaf_fdotr) virial_fdotr_compute(); // not computing virial 
 }
@@ -324,7 +344,8 @@ void PairEAM::allocate()
 
 void PairEAM::settings(int narg, char **arg)
 {
-    if (narg > 0) error->all(FLERR,"Illegal pair_style command");
+    ntypes = atoi(arg[0]);
+    if (narg > 1) error->all(FLERR,"Illegal pair_style command");
 }
 
 /* ----------------------------------------------------------------------
@@ -424,7 +445,7 @@ void PairEAM::read_file(char *filename)
   Funcfl *file = &funcfl[nfuncfl-1];
 
   // read potential file
-  if (comm->get_me() == 0) {
+  if (me == 0) {
       PotentialFileReader reader(spk, filename, "eam", unit_convert_flag);
 
       // transparently convert units for supported conversions
@@ -469,7 +490,7 @@ void PairEAM::read_file(char *filename)
       }
   }
 
-  if (comm->get_me() != 0) {
+  if (me != 0) {
     memory->create(file->frho, (file->nrho+1), "pair:frho");
     memory->create(file->rhor, (file->nr+1), "pair:rhor");
     memory->create(file->zr, (file->nr+1), "pair:zr");
@@ -486,7 +507,6 @@ void PairEAM::file2array()
     int i,j,k,m,n;
     int ntypes = potential->pair->ntypes;
     double sixth = 1.0/6.0;
-
     // determine max function params from alla ctive funcfl files
     // active means some element is pointing at it via map
 
@@ -700,15 +720,13 @@ void PairEAM::array2spline()
   memory->destroy(z2r_spline);
 
   memory->create(frho_spline, nfrho,nrho+1,7,"pair:frho");
-  memory->create(rhor_spline,nz2r,nr+1,7,"pair:z2r");
+  memory->create(rhor_spline,nrhor,nr+1,7,"pair:rhor");
   memory->create(z2r_spline,nz2r,nr+1,7,"pair:z2r");
 
   for (int i = 0; i< nfrho; i++)
     interpolate(nrho,drho,frho[i],frho_spline[i]);
-
   for (int i = 0; i < nrhor; i++)
     interpolate(nr,dr,rhor[i],rhor_spline[i]);
-
   for (int i = 0; i < nz2r; i++)
     interpolate(nr,dr,z2r[i],z2r_spline[i]);
 }
@@ -718,7 +736,6 @@ void PairEAM::array2spline()
 void PairEAM::interpolate(int n, double delta, double *f, double **spline)
 {
     for (int m = 1; m <= n; m++) spline[m][6] = f[m];
-
     spline[1][5] = spline[2][6] - spline[1][6];
     spline[2][5] = 0.5 * (spline[3][6]-spline[1][6]);
     spline[n-1][5] = 0.5 * (spline[n][6]-spline[n-2][6]);
@@ -754,7 +771,7 @@ double PairEAM::single(int i, int j, int itype, int jtype,
     int m;
     double r,p,rhoip,rhojp,z2,z2p,recip,phi,phip,psip;
     double *coeff;
-
+    std::cout << "single" << std::endl;
     if (!numforce)
         error->all(FLERR, "EAM embedding data required for this calculation is missing");
 
@@ -764,14 +781,14 @@ double PairEAM::single(int i, int j, int itype, int jtype,
     // }
 
     if (numforce[i] > 0) {
-        p = rho[i]*rdrho + 1.0;
+        p = rho*rdrho + 1.0;
         m = static_cast<int> (p);
         m = MAX(1,MIN(m,nrho-1));
         p -= m;
         p = MIN(p,1.0);
         coeff = frho_spline[type2frho[itype]][m];
         phi = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
-        if (rho[i] > rhomax) phi += fp[i] * (rho[i]-rhomax);
+        if (rho > rhomax) phi += fp * (rho-rhomax);
         phi *= 1.0/static_cast<double>(numforce[i]);
     } else phi = 0.0;
 
@@ -793,7 +810,7 @@ double PairEAM::single(int i, int j, int itype, int jtype,
     recip = 1.0/r;
     phi += z2*recip;
     phip = z2p*recip-phi*recip;
-    psip = fp[i]*rhojp + fp[j]*rhoip + phip;
+    psip = fp*rhojp + fp*rhoip + phip; // second fp is for j, not sure how this should be changed
     fforce = -psip*recip;
 
     return phi;
@@ -801,88 +818,88 @@ double PairEAM::single(int i, int j, int itype, int jtype,
 
 /* ---------------------------------------------------------------------- */
 
-int PairEAM::pack_forward_comm(int n, int *list, double *buf, int /*pbc_flag*/, int * /*pbc*/)
-{
-    int i,j,m;
+// int PairEAM::pack_forward_comm(int n, int *list, double *buf, int /*pbc_flag*/, int * /*pbc*/)
+// {
+//     int i,j,m;
 
-    m = 0;
-    for (i = 0; i < n; i++) {
-        j = list[i];
-        buf[m++] = fp[j];
-    }
-    return m;
-}
-
-/* ---------------------------------------------------------------------- */
-
-void PairEAM::unpack_forward_comm(int n, int first, double *buf)
-{
-    int i,m,last;
-
-    m = 0;
-    last = first + n;
-    for (i = first; i < last; i++) fp[i] = buf[m++];
-}
-
-int PairEAM::pack_reverse_comm(int n, int first, double *buf)
-{
-    int i,m,last;
-
-    m = 0;
-    last = first + n;
-    for (i = first; i < last; i++) buf[m++] = rho[i];
-    return m;
-}
+//     m = 0;
+//     for (i = 0; i < n; i++) {
+//         j = list[i];
+//         buf[m++] = fp[j];
+//     }
+//     return m;
+// }
 
 /* ---------------------------------------------------------------------- */
 
-void PairEAM::unpack_reverse_comm(int n, int *list, double *buf)
-{
-    int i,j,m;
+// void PairEAM::unpack_forward_comm(int n, int first, double *buf)
+// {
+//     int i,m,last;
 
-    m=0;
-    for (i=0; i < n; i++) {
-        j = list[i];
-        rho[j] += buf[m++];
-    }
-}
+//     m = 0;
+//     last = first + n;
+//     for (i = first; i < last; i++) fp[i] = buf[m++];
+// }
+
+// int PairEAM::pack_reverse_comm(int n, int first, double *buf)
+// {
+//     int i,m,last;
+
+//     m = 0;
+//     last = first + n;
+//     for (i = first; i < last; i++) buf[m++] = rho;
+//     return m;
+// }
+
+/* ---------------------------------------------------------------------- */
+
+// void PairEAM::unpack_reverse_comm(int n, int *list, double *buf)
+// {
+//     int i,j,m;
+
+//     m=0;
+//     for (i=0; i < n; i++) {
+//         j = list[i];
+//         rho += buf[m++];
+//     }
+// }
 
 /* ----------------------------------------------------------------------
    memory usage of local atom-based arrays - not used in spparks
 ------------------------------------------------------------------------- */
 
-double PairEAM::memory_usage()
-{
-    // double bypes = (double)maxeatom * sizeof(double);
-    // bytes += (double)maxvatom*6 * sizeof(double);
-    // bytes += (double)2 * nmax * sizeof(double);
-    // return bytes;
-}
+// double PairEAM::memory_usage()
+// {
+//     double bypes = (double)maxeatom * sizeof(double);
+//     bytes += (double)maxvatom*6 * sizeof(double);
+//     bytes += (double)2 * nmax * sizeof(double);
+//     return bytes;
+// }
 
 /* ----------------------------------------------------------------------
    swap fp array with one passed in by caller
 ------------------------------------------------------------------------- */
 
-void PairEAM::swap_eam(double *fp_caller, double **fp_caller_hold)
-{
-    double *tmp = fp;
-    fp = fp_caller;
-    *fp_caller_hold = tmp;
+// void PairEAM::swap_eam(double *fp_caller, double **fp_caller_hold)
+// {
+//     double *tmp = fp;
+//     fp = fp_caller;
+//     *fp_caller_hold = tmp;
 
-    // skip warning about out-of-sync timestep, since we already warn in the caller
-    // taken from lammps, not used
-    // embedstep = update->ntimestep;
-}
+//     // skip warning about out-of-sync timestep, since we already warn in the caller
+//     // taken from lammps, not used
+//     // embedstep = update->ntimestep;
+// }
 
 /* ---------------------------------------------------------------------- */
 
-void *PairEAM::extract(const char *str, int &dim)
-{
-    dim = 2;
-    if (strcmp(str,"scale") == 0) return (void *) scale;
+// void *PairEAM::extract(const char *str, int &dim)
+// {
+//     dim = 2;
+//     if (strcmp(str,"scale") == 0) return (void *) scale;
 
-    return nullptr;
-}
+//     return nullptr;
+// }
 
 /* ----------------------------------------------------------------------
    peratom requests from FixPair
@@ -893,15 +910,15 @@ void *PairEAM::extract(const char *str, int &dim)
    return NULL if str is not recognized
 ---------------------------------------------------------------------- */
 
-void *PairEAM::extract_peratom(const char *str, int &ncol)
-{
-    if (strcmp(str,"rho") == 0) {
-        ncol = 0;
-        return (void *) rho;
-    } else if (strcmp(str,"fp") == 0) {
-        ncol = 0;
-        return (void *) fp;
-    }
+// void *PairEAM::extract_peratom(const char *str, int &ncol)
+// {
+//     if (strcmp(str,"rho") == 0) {
+//         ncol = 0;
+//         return (void *) rho;
+//     } else if (strcmp(str,"fp") == 0) {
+//         ncol = 0;
+//         return (void *) fp;
+//     }
 
-    return nullptr;
-}
+//     return nullptr;
+// }

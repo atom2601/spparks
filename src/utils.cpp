@@ -18,13 +18,12 @@
    the same order as that utils file
 ------------------------------------------------------------------------- */
 
-#include "utils.h"
-
-#include "error.h"
+#include "app_off_lattice.h"
+#include "comm_off_lattice.h"
 #include "text_file_reader.h"
 #include "platform.h"
-#include "format.h"
-#include "comm_off_lattice.h"
+#include "utils.h"
+#include "error.h"
 
 #include <cctype>
 #include <cerrno>
@@ -416,50 +415,506 @@ double utils::get_conversion_factor(const int property, const int conversion)
 FILE *utils::open_potential(const std::string &name, SPPARKS *spk, int *auto_convert)
 {
     auto error = spk->error;
-    auto me = spk->comm->get_me();
+    // auto me = comm->get_me();
 
     std::string filepath = get_potential_file_path(name);
 
     if (!filepath.empty()) {
-        std::string unit_style = spk->update->unit_style;
+        // std::string unit_style = spk->update->unit_style;
         std::string date = get_potential_date(filepath, "potential");
         std::string units = get_potential_units(filepath, "potential");
 
-        if (!date.empty() && (me == 0))
-            logmesg(spk, "Reading potential file {} with DATE: {}\n", name, date);
+        // if (!date.empty() && (me == 0))
+        //     logmesg(spk, "Reading potential file {} with DATE: {}\n", name, date);
 
-        if (auto_convert == nullptr) {
-            if (!units.empty() && (units != unit_style) && (me == 0)) {
-                std::string formattedMesg = fmt::format("Potential file {} requires {} units but {} are in use", 
-                                                        name, units, unit_style);
-                const char* cstr = formattedMesg.c_str();
-                error->one(FLERR, cstr);
-                return nullptr;
-            }
-        } else {
-            if (units.empty() || units == unit_style) {
-                *auto_convert = NOCONVERT;
-            } else {
-                if ((units == "metal") && (unit_style == "real") && (*auto_convert & METAL2REAL)) {
-                    *auto_convert = METAL2REAL;
-                } else if ((units == "real") && (unit_style == "metal") && (*auto_convert & REAL2METAL)) {
-                    *auto_convert = REAL2METAL;
-                } else {
-                    std::string formattedMesg = fmt::format("Potential file {} requires {} units but {} units are in use",
-                                                            name, units, unit_style);
-                    const char* cstr = formattedMesg.c_str();
-                    error->one(FLERR, cstr);
-                    return nullptr;
-                }
-            }
-            if ((*auto_convert != NOCONVERT) && (me == 0)) {
-                std::string formattedMesg = fmt::format("Converting potential file in {} units to {} units",
-                                                        units, unit_style);
-                const char* cstr = formattedMesg.c_str();
-                error->warning(FLERR, cstr);
-            }
-        }
+        // if (auto_convert == nullptr) {
+        //     if (!units.empty() && (units != unit_style) && (me == 0)) {
+        //         std::string formattedMesg = fmt::format("Potential file {} requires {} units but {} are in use", 
+        //                                                 name, units, unit_style);
+        //         const char* cstr = formattedMesg.c_str();
+        //         error->one(FLERR, cstr);
+        //         return nullptr;
+        //     }
+        // } else {
+        //     if (units.empty() || units == unit_style) {
+        //         *auto_convert = NOCONVERT;
+        //     } else {
+        //         if ((units == "metal") && (unit_style == "real") && (*auto_convert & METAL2REAL)) {
+        //             *auto_convert = METAL2REAL;
+        //         } else if ((units == "real") && (unit_style == "metal") && (*auto_convert & REAL2METAL)) {
+        //             *auto_convert = REAL2METAL;
+        //         } else {
+        //             std::string formattedMesg = fmt::format("Potential file {} requires {} units but {} units are in use",
+        //                                                     name, units, unit_style);
+        //             const char* cstr = formattedMesg.c_str();
+        //             error->one(FLERR, cstr);
+        //             return nullptr;
+        //         }
+        //     }
+        //     if ((*auto_convert != NOCONVERT) && (me == 0)) {
+        //         std::string formattedMesg = fmt::format("Converting potential file in {} units to {} units",
+        //                                                 units, unit_style);
+        //         const char* cstr = formattedMesg.c_str();
+        //         error->warning(FLERR, cstr);
+        //     }
+        // }
         return fopen(filepath.c_str(), "r");
     }
     return nullptr;
+}
+
+extern "C" {
+
+/* Typedef'd pointer to get abstract datatype. */
+typedef struct regex_t *re_t;
+typedef struct regex_context_t *re_ctx_t;
+
+/* Compile regex string pattern to a regex_t-array. */
+static re_t re_compile(re_ctx_t context, const char *pattern);
+
+/* Find matches of the compiled pattern inside text. */
+static int re_matchp(const char *text, re_t pattern, int *matchlen);
+
+/* Definitions: */
+
+#define MAX_REGEXP_OBJECTS 256 /* Max number of regex symbols in expression. */
+#define MAX_CHAR_CLASS_LEN 256 /* Max length of character-class buffer in.   */
+
+enum {
+  RX_UNUSED,
+  RX_DOT,
+  RX_BEGIN,
+  RX_END,
+  RX_QUESTIONMARK,
+  RX_STAR,
+  RX_PLUS,
+  RX_CHAR,
+  RX_CHAR_CLASS,
+  RX_INV_CHAR_CLASS,
+  RX_DIGIT,
+  RX_NOT_DIGIT,
+  RX_INTEGER,
+  RX_NOT_INTEGER,
+  RX_FLOAT,
+  RX_NOT_FLOAT,
+  RX_ALPHA,
+  RX_NOT_ALPHA,
+  RX_WHITESPACE,
+  RX_NOT_WHITESPACE /*, BRANCH */
+};
+
+typedef struct regex_t {
+  unsigned char type; /* CHAR, STAR, etc.                      */
+  union {
+    unsigned char ch;   /*      the character itself             */
+    unsigned char *ccl; /*  OR  a pointer to characters in class */
+  } u;
+} regex_t;
+
+typedef struct regex_context_t {
+  /* MAX_REGEXP_OBJECTS is the max number of symbols in the expression.
+       MAX_CHAR_CLASS_LEN determines the size of buffer for chars in all char-classes in the expression. */
+  regex_t re_compiled[MAX_REGEXP_OBJECTS];
+  unsigned char ccl_buf[MAX_CHAR_CLASS_LEN];
+} regex_context_t;
+
+int re_match(const char *text, const char *pattern)
+{
+  regex_context_t context;
+  int dummy;
+  return re_matchp(text, re_compile(&context, pattern), &dummy);
+}
+
+int re_find(const char *text, const char *pattern, int *matchlen)
+{
+  regex_context_t context;
+  return re_matchp(text, re_compile(&context, pattern), matchlen);
+}
+
+/* Private function declarations: */
+static int matchpattern(regex_t *pattern, const char *text, int *matchlen);
+static int matchcharclass(char c, const char *str);
+static int matchstar(regex_t p, regex_t *pattern, const char *text, int *matchlen);
+static int matchplus(regex_t p, regex_t *pattern, const char *text, int *matchlen);
+static int matchone(regex_t p, char c);
+static int matchdigit(char c);
+static int matchint(char c);
+static int matchfloat(char c);
+static int matchalpha(char c);
+static int matchwhitespace(char c);
+static int matchmetachar(char c, const char *str);
+static int matchrange(char c, const char *str);
+static int matchdot(char c);
+static int ismetachar(char c);
+
+/* Semi-public functions: */
+int re_matchp(const char *text, re_t pattern, int *matchlen)
+{
+  *matchlen = 0;
+  if (pattern != nullptr) {
+    if (pattern[0].type == RX_BEGIN) {
+      return ((matchpattern(&pattern[1], text, matchlen)) ? 0 : -1);
+    } else {
+      int idx = -1;
+
+      do {
+        idx += 1;
+
+        if (matchpattern(pattern, text, matchlen)) {
+          if (text[0] == '\0') return -1;
+
+          return idx;
+        }
+      } while (*text++ != '\0');
+    }
+  }
+  return -1;
+}
+
+re_t re_compile(re_ctx_t context, const char *pattern)
+{
+  regex_t *const re_compiled = context->re_compiled;
+  unsigned char *const ccl_buf = context->ccl_buf;
+  int ccl_bufidx = 1;
+
+  char c;    /* current char in pattern   */
+  int i = 0; /* index into pattern        */
+  int j = 0; /* index into re_compiled    */
+
+  while (pattern[i] != '\0' && (j + 1 < MAX_REGEXP_OBJECTS)) {
+    c = pattern[i];
+
+    switch (c) {
+        /* Meta-characters: */
+      case '^': {
+        re_compiled[j].type = RX_BEGIN;
+      } break;
+      case '$': {
+        re_compiled[j].type = RX_END;
+      } break;
+      case '.': {
+        re_compiled[j].type = RX_DOT;
+      } break;
+      case '*': {
+        re_compiled[j].type = RX_STAR;
+      } break;
+      case '+': {
+        re_compiled[j].type = RX_PLUS;
+      } break;
+      case '?': {
+        re_compiled[j].type = RX_QUESTIONMARK;
+      } break;
+
+        /* Escaped character-classes (\s \w ...): */
+      case '\\': {
+        if (pattern[i + 1] != '\0') {
+          /* Skip the escape-char '\\' */
+          i += 1;
+          /* ... and check the next */
+          switch (pattern[i]) {
+              /* Meta-character: */
+            case 'd': {
+              re_compiled[j].type = RX_DIGIT;
+            } break;
+            case 'D': {
+              re_compiled[j].type = RX_NOT_DIGIT;
+            } break;
+            case 'i': {
+              re_compiled[j].type = RX_INTEGER;
+            } break;
+            case 'I': {
+              re_compiled[j].type = RX_NOT_INTEGER;
+            } break;
+            case 'f': {
+              re_compiled[j].type = RX_FLOAT;
+            } break;
+            case 'F': {
+              re_compiled[j].type = RX_NOT_FLOAT;
+            } break;
+            case 'w': {
+              re_compiled[j].type = RX_ALPHA;
+            } break;
+            case 'W': {
+              re_compiled[j].type = RX_NOT_ALPHA;
+            } break;
+            case 's': {
+              re_compiled[j].type = RX_WHITESPACE;
+            } break;
+            case 'S': {
+              re_compiled[j].type = RX_NOT_WHITESPACE;
+            } break;
+
+              /* Escaped character, e.g. '.' or '$' */
+            default: {
+              re_compiled[j].type = RX_CHAR;
+              re_compiled[j].u.ch = pattern[i];
+            } break;
+          }
+        }
+        /* '\\' as last char in pattern -> invalid regular expression. */
+      } break;
+
+        /* Character class: */
+      case '[': {
+        /* Remember where the char-buffer starts. */
+        int buf_begin = ccl_bufidx;
+
+        /* Look-ahead to determine if negated */
+        if (pattern[i + 1] == '^') {
+          re_compiled[j].type = RX_INV_CHAR_CLASS;
+          i += 1;                  /* Increment i to avoid including '^' in the char-buffer */
+          if (pattern[i + 1] == 0) /* incomplete pattern, missing non-zero char after '^' */
+          {
+            return nullptr;
+          }
+        } else {
+          re_compiled[j].type = RX_CHAR_CLASS;
+        }
+
+        /* Copy characters inside [..] to buffer */
+        while ((pattern[++i] != ']') && (pattern[i] != '\0')) {
+          /* Missing ] */
+          if (pattern[i] == '\\') {
+            if (ccl_bufidx >= MAX_CHAR_CLASS_LEN - 1) { return nullptr; }
+            if (pattern[i + 1] == 0) /* incomplete pattern, missing non-zero char after '\\' */
+            {
+              return nullptr;
+            }
+            ccl_buf[ccl_bufidx++] = pattern[i++];
+          } else if (ccl_bufidx >= MAX_CHAR_CLASS_LEN) {
+            return nullptr;
+          }
+          ccl_buf[ccl_bufidx++] = pattern[i];
+        }
+        if (ccl_bufidx >= MAX_CHAR_CLASS_LEN) {
+          /* Catches cases such as [00000000000000000000000000000000000000][ */
+          return nullptr;
+        }
+        /* Null-terminate string end */
+        ccl_buf[ccl_bufidx++] = 0;
+        re_compiled[j].u.ccl = &ccl_buf[buf_begin];
+      } break;
+
+        /* Other characters: */
+      default: {
+        re_compiled[j].type = RX_CHAR;
+        re_compiled[j].u.ch = c;
+      } break;
+    }
+    /* no buffer-out-of-bounds access on invalid patterns -
+     * see https://github.com/kokke/tiny-regex-c/commit/1a279e04014b70b0695fba559a7c05d55e6ee90b */
+    if (pattern[i] == 0) { return nullptr; }
+
+    i += 1;
+    j += 1;
+  }
+  /* 'RX_UNUSED' is a sentinel used to indicate end-of-pattern */
+  re_compiled[j].type = RX_UNUSED;
+
+  return (re_t) re_compiled;
+}
+
+/* Private functions: */
+static int matchdigit(char c)
+{
+  return isdigit(c);
+}
+
+static int matchint(char c)
+{
+  return (matchdigit(c) || (c == '-') || (c == '+'));
+}
+
+static int matchfloat(char c)
+{
+  return (matchint(c) || (c == '.') || (c == 'e') || (c == 'E'));
+}
+
+static int matchalpha(char c)
+{
+  return isalpha(c);
+}
+
+static int matchwhitespace(char c)
+{
+  return isspace(c);
+}
+
+static int matchalphanum(char c)
+{
+  return ((c == '_') || matchalpha(c) || matchdigit(c));
+}
+
+static int matchrange(char c, const char *str)
+{
+  return ((c != '-') && (str[0] != '\0') && (str[0] != '-') && (str[1] == '-') &&
+          (str[1] != '\0') && (str[2] != '\0') && ((c >= str[0]) && (c <= str[2])));
+}
+
+static int matchdot(char c)
+{
+#if defined(RE_DOT_MATCHES_NEWLINE) && (RE_DOT_MATCHES_NEWLINE == 1)
+  (void) c;
+  return 1;
+#else
+  return c != '\n' && c != '\r';
+#endif
+}
+
+static int ismetachar(char c)
+{
+  return ((c == 's') || (c == 'S') || (c == 'w') || (c == 'W') || (c == 'd') || (c == 'D'));
+}
+
+static int matchmetachar(char c, const char *str)
+{
+  switch (str[0]) {
+    case 'd':
+      return matchdigit(c);
+    case 'D':
+      return !matchdigit(c);
+    case 'i':
+      return matchint(c);
+    case 'I':
+      return !matchint(c);
+    case 'f':
+      return matchfloat(c);
+    case 'F':
+      return !matchfloat(c);
+    case 'w':
+      return matchalphanum(c);
+    case 'W':
+      return !matchalphanum(c);
+    case 's':
+      return matchwhitespace(c);
+    case 'S':
+      return !matchwhitespace(c);
+    default:
+      return (c == str[0]);
+  }
+}
+
+static int matchcharclass(char c, const char *str)
+{
+  do {
+    if (matchrange(c, str)) {
+      return 1;
+    } else if (str[0] == '\\') {
+      /* Escape-char: increment str-ptr and match on next char */
+      str += 1;
+      if (matchmetachar(c, str)) {
+        return 1;
+      } else if ((c == str[0]) && !ismetachar(c)) {
+        return 1;
+      }
+    } else if (c == str[0]) {
+      if (c == '-') {
+        return ((str[-1] == '\0') || (str[1] == '\0'));
+      } else {
+        return 1;
+      }
+    }
+  } while (*str++ != '\0');
+
+  return 0;
+}
+
+static int matchone(regex_t p, char c)
+{
+  switch (p.type) {
+    case RX_DOT:
+      return matchdot(c);
+    case RX_CHAR_CLASS:
+      return matchcharclass(c, (const char *) p.u.ccl);
+    case RX_INV_CHAR_CLASS:
+      return !matchcharclass(c, (const char *) p.u.ccl);
+    case RX_DIGIT:
+      return matchdigit(c);
+    case RX_NOT_DIGIT:
+      return !matchdigit(c);
+    case RX_INTEGER:
+      return matchint(c);
+    case RX_NOT_INTEGER:
+      return !matchint(c);
+    case RX_FLOAT:
+      return matchfloat(c);
+    case RX_NOT_FLOAT:
+      return !matchfloat(c);
+    case RX_ALPHA:
+      return matchalphanum(c);
+    case RX_NOT_ALPHA:
+      return !matchalphanum(c);
+    case RX_WHITESPACE:
+      return matchwhitespace(c);
+    case RX_NOT_WHITESPACE:
+      return !matchwhitespace(c);
+    default:
+      return (p.u.ch == c);
+  }
+}
+
+static int matchstar(regex_t p, regex_t *pattern, const char *text, int *matchlen)
+{
+  int prelen = *matchlen;
+  const char *prepos = text;
+  while ((text[0] != '\0') && matchone(p, *text)) {
+    text++;
+    (*matchlen)++;
+  }
+  while (text >= prepos) {
+    if (matchpattern(pattern, text--, matchlen)) return 1;
+    (*matchlen)--;
+  }
+
+  *matchlen = prelen;
+  return 0;
+}
+
+static int matchplus(regex_t p, regex_t *pattern, const char *text, int *matchlen)
+{
+  const char *prepos = text;
+  while ((text[0] != '\0') && matchone(p, *text)) {
+    text++;
+    (*matchlen)++;
+  }
+  while (text > prepos) {
+    if (matchpattern(pattern, text--, matchlen)) return 1;
+    (*matchlen)--;
+  }
+  return 0;
+}
+
+static int matchquestion(regex_t p, regex_t *pattern, const char *text, int *matchlen)
+{
+  if (p.type == RX_UNUSED) return 1;
+  if (matchpattern(pattern, text, matchlen)) return 1;
+  if (*text && matchone(p, *text++)) {
+    if (matchpattern(pattern, text, matchlen)) {
+      (*matchlen)++;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* Iterative matching */
+static int matchpattern(regex_t *pattern, const char *text, int *matchlen)
+{
+  int pre = *matchlen;
+  do {
+    if ((pattern[0].type == RX_UNUSED) || (pattern[1].type == RX_QUESTIONMARK)) {
+      return matchquestion(pattern[0], &pattern[2], text, matchlen);
+    } else if (pattern[1].type == RX_STAR) {
+      return matchstar(pattern[0], &pattern[2], text, matchlen);
+    } else if (pattern[1].type == RX_PLUS) {
+      return matchplus(pattern[0], &pattern[2], text, matchlen);
+    } else if ((pattern[0].type == RX_END) && pattern[1].type == RX_UNUSED) {
+      return (text[0] == '\0');
+    }
+    (*matchlen)++;
+  } while ((text[0] != '\0') && matchone(*pattern++, *text++));
+
+  *matchlen = pre;
+  return 0;
+}
 }

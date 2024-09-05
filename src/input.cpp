@@ -34,6 +34,8 @@
 #include "style_diag.h"
 #include "style_solve.h"
 
+#include <iostream>
+
 #ifdef SPK_STITCH
 #include "stitch.h"
 #endif

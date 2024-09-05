@@ -18,9 +18,7 @@
 ------------------------------------------------------------------------- */
 
 #ifdef PAIR_CLASS
-// clang-format off
 PairStyle(eam,PairEAM)
-// clang-format on
 #else
 
 #ifndef SPK_PAIR_EAM_H
@@ -67,20 +65,19 @@ class PairEAM : public Pair {
   double memory_usage();
   void swap_eam(double *, double **);
 
-  class CommOffLattice *comm;
-
  protected:
   double nmax; // allocated size of per-atom arrays
   double cutforcesq;
   double **scale;
   bigint embedstep; // timestep, the embedding term was computed
 
-  virtual void ev_setup(int, int, int alloc = 1);
+  // virtual void ev_setup(int, int, int alloc = 1);
   void ev_unset();
 
-  // per-atom arrays
+  // per-atom arrays - adjusted to just be for a single atom
 
-  double *rho, *fp;
+  double rho;
+  double fp; 
   int *numforce;
 
   // potentials as file data
@@ -119,6 +116,9 @@ class PairEAM : public Pair {
 
   virtual void read_file(char *);
   virtual void file2array();
+
+ private:
+  int me;
 };
 
 }  // namespace SPPARKS_NS
