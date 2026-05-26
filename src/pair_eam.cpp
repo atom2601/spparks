@@ -50,10 +50,9 @@ PairEAM::PairEAM(SPPARKS *spk) : Pair(spk)
   nmax = 0;
   // rho = nullptr;
   // fp = nullptr;
-  numforce = nullptr;
-  numforce = nullptr;
+  numforce = 0;
   type2frho = nullptr;
-
+ 
   nfuncfl = 0;
   funcfl = nullptr;
 
@@ -185,7 +184,7 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
 
     double eng = 0.0;
 
-    jlist = firstneigh[i];
+    // jlist = firstneigh[i];
     rho = 0.0;
     for (int jj = 0; jj < numneigh; jj++) {
         j = neighs[jj];
@@ -222,24 +221,23 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
 
 
     // for (ii = 0; i < inum; i++) {
-      // i = ilist[ii];
-      // p = rho*rdrho + 1.0;
-      // m = static_cast<int> (p);
-      // m = MAX(1,MIN(m,nrho-1));
-      // p -= m;
-      // p = MIN(p,1.0);
-      // coeff = frho_spline[type2frho[type[i]]][m];
-      // fp = (coeff[0]*p + coeff[1])*p + coeff[2];
-      // // if (eflag) { // in lammps if this is != zero, this computation happens, here 
-      //               // it will always be done
-      // phi = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
-      
-      // if (rho > rhomax) phi += fp * (rho-rhomax);
-      // phi *= scale[type[i]][type[i]];
-      // if (eflag_global) eng_vdwl += phi; // these are accumualted per-atom energy/virial values
-      // if (eflag_atom) eatom[i] += phi;   // not used here
+    p = rho*rdrho + 1.0;
+    m = static_cast<int> (p);
+    m = MAX(1,MIN(m,nrho-1));
+    p -= m;
+    p = MIN(p,1.0);
+    coeff = frho_spline[type2frho[itype]][m];
+    fp = (coeff[0]*p + coeff[1])*p + coeff[2];
+    // if (eflag) { // in lammps if this is != zero, this computation happens, here 
+                  // it will always be done
+    double phi_embed = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+    
+    if (rho > rhomax) phi_embed += fp * (rho-rhomax);
+    phi_embed *= scale[type[i]][type[i]];
+    eng += phi_embed;
+    // if (eflag_global) eng_vdwl += phi; // these are accumualted per-atom energy/virial values
+    // if (eflag_atom) eatom[i] += phi;   // not used here
       // }
-    // }
 
     // communicate derivative of embedding function
 
@@ -249,6 +247,7 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
     // compute forces on each atom
     // loop over neighbors of my atoms   
 
+    phi = 0.0;
     for (int jj = 0; jj < numneigh; jj++) {
         j = neighs[jj];
         jtype = type[j];
@@ -263,7 +262,7 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
             ++numforce;
             jtype = type[j];
             r = sqrt(rsq);
-            p = r*dr + 1.0;
+            p = r*rdr + 1.0;
             m = static_cast<int> (p);
             m = MIN(m,nr-1);
             p -= m;
@@ -295,8 +294,6 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
             // psip = fp[i]*rhojp + fp[j]*rhoip + phi;
             // fpair = -scale[itype][jtype]*psip*recip;
 
-            eng += scale[itype][jtype]*phi;
-
             // f[i][0] += delx*fpair;
             // f[i][1] += dely*fpair;
             // f[i][2] += delz*fpair;
@@ -310,8 +307,85 @@ double PairEAM::energy(int i, int numneigh, int *neighs,
             // if (eflag) evdwl = scale[itype][jtype]*phi;
             // if (evflag) ev_tally(i,j,nlocal,newton_pair,evdwl,0.0,fpair,delx,dely,delz);
         }
+    eng += scale[itype][itype]*phi*0.5;
     return eng;
     // if (vlaf_fdotr) virial_fdotr_compute(); // not computing virial 
+}
+
+double PairEAM::energy_neighbor_contribution(int i, int numneigh, int *neighs,
+                                              double **x, int *type, int moved_atom)
+{
+    int j, m, itype, jtype;
+    double xtmp, ytmp, ztmp, delx, dely, delz, rsq, r, p;
+    double *coeff, z2, recip;
+    double eng = 0.0;
+
+    itype = type[i];
+    xtmp = x[i][0];
+    ytmp = x[i][1];
+    ztmp = x[i][2];
+
+    // DENSITY LOOP: use FULL neighbor list (include exclude atom)
+    // rho_j must reflect true environment including atom i
+    rho = 0.0;
+    for (int jj = 0; jj < numneigh; jj++) {
+        j = neighs[jj];
+        // NO skip for exclude here - density includes all neighbors
+        jtype = type[j];
+        delx = xtmp - x[j][0];
+        dely = ytmp - x[j][1];
+        delz = ztmp - x[j][2];
+        rsq = delx*delx + dely*dely + delz*delz;
+        if (rsq < cutforcesq) {
+            p = sqrt(rsq)*rdr + 1.0;
+            m = static_cast<int>(p);
+            m = MIN(m, nr-1);
+            p -= m;
+            p = MIN(p, 1.0);
+            coeff = rhor_spline[type2rhor[jtype][itype]][m];
+            rho += ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+        }
+    }
+
+    // EMBEDDING ENERGY: uses full rho
+    p = rho*rdrho + 1.0;
+    m = static_cast<int>(p);
+    m = MAX(1, MIN(m, nrho-1));
+    p -= m;
+    p = MIN(p, 1.0);
+    coeff = frho_spline[type2frho[itype]][m];
+    fp = (coeff[0]*p + coeff[1])*p + coeff[2];
+    double phi_embed = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+    if (rho > rhomax) phi_embed += fp*(rho-rhomax);
+    phi_embed *= scale[itype][itype];
+    eng += phi_embed;
+
+    // PAIR LOOP: EXCLUDE atom i to avoid double counting phi
+    double phi = 0.0;
+    for (int jj = 0; jj < numneigh; jj++) {
+        j = neighs[jj];
+        if (j == moved_atom) continue;   // skip excluded atom for pair term only
+        jtype = type[j];
+        delx = xtmp - x[j][0];
+        dely = ytmp - x[j][1];
+        delz = ztmp - x[j][2];
+        rsq = delx*delx + dely*dely + delz*delz;
+        if (rsq < cutforcesq) {
+            r = sqrt(rsq);
+            p = r*rdr + 1.0;
+            m = static_cast<int>(p);
+            m = MIN(m, nr-1);
+            p -= m;
+            p = MIN(p, 1.0);
+            coeff = z2r_spline[type2z2r[itype][jtype]][m];
+            z2 = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
+            recip = 1.0/r;
+            phi += scale[itype][jtype]*z2*recip;
+        }
+    }
+    eng += phi*0.5;
+
+    return eng;
 }
 
 void PairEAM::allocate()
@@ -741,11 +815,11 @@ void PairEAM::interpolate(int n, double delta, double *f, double **spline)
     spline[n-1][5] = 0.5 * (spline[n][6]-spline[n-2][6]);
     spline[n][5] = spline[n][6] - spline[n-1][6];
 
-    for (int m = 3; m <= 2; m++)
+    for (int m = 3; m <= n-2; m++)
         spline[m][5] = ((spline[m-2][6]-spline[m+2][6]) + 
                         8.0*(spline[m+1][6]-spline[m-1][6])) / 12.0;
     
-    for (int m = 1; m <= 1; m++) {
+    for (int m = 1; m <= n-1; m++) {
         spline[m][4] = 3.0*(spline[m+1][6]-spline[m][6]) -
             2.0*spline[m][5] - spline[m+1][5];
         spline[m][3] = spline[m][5] + spline[m+1][5] - 
@@ -780,7 +854,7 @@ double PairEAM::single(int i, int j, int itype, int jtype,
     //     embedstep = update->ntimestep;
     // }
 
-    if (numforce[i] > 0) {
+    if (numforce > 0) {
         p = rho*rdrho + 1.0;
         m = static_cast<int> (p);
         m = MAX(1,MIN(m,nrho-1));
@@ -789,11 +863,11 @@ double PairEAM::single(int i, int j, int itype, int jtype,
         coeff = frho_spline[type2frho[itype]][m];
         phi = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
         if (rho > rhomax) phi += fp * (rho-rhomax);
-        phi *= 1.0/static_cast<double>(numforce[i]);
+        phi *= 1.0/static_cast<double>(numforce);
     } else phi = 0.0;
 
     r = sqrt(rsq);
-    p = r*dr + 1.0;
+    p = r*rdr + 1.0;
     m = static_cast<int> (p);
     m = MIN(m,nr-1);
     p -= m;

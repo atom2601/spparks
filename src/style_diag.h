@@ -5,5 +5,5 @@
 #include "diag_erbium.h"
 #include "diag_propensity.h"
 #include "diag_sinter_density.h"
-#include "diag_sinter_free_energy.h"
 #include "diag_sinter_free_energy_pore.h"
+#include "diag_sinter_free_energy.h"

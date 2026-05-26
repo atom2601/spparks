@@ -50,6 +50,7 @@ class PairEAM : public Pair {
   PairEAM(class SPPARKS *);
   ~PairEAM() override;
   double energy(int, int, int *, double **, int *) override;
+  double energy_neighbor_contribution(int, int, int *, double **, int *, int) override;
   void settings(int, char **) override;
   void coeff(int, char **) override;
   void init_style() override;
@@ -78,7 +79,7 @@ class PairEAM : public Pair {
 
   double rho;
   double fp; 
-  int *numforce;
+  int numforce;
 
   // potentials as file data
 

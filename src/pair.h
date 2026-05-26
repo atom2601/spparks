@@ -32,6 +32,19 @@ class Pair : protected Pointers {
   virtual void init_style() {};
   virtual double init_one(int, int) {return 0.0;}
   virtual double energy(int, int, int *, double **, int *) = 0;
+  virtual double energy_neighbor_contribution(int i, int numneigh, int *neighs, 
+                                 double **x, int *type, int moved_atom)
+  {
+   // commented out for trying something new
+   // int *filtered = new int[numneigh];
+   // int nfiltered =0;
+   // for (int jj = 0; jj < numneigh; jj++)
+   //    if (neighs[jj] != exclude) filtered[nfiltered++] = neighs[jj];
+   // double eng = energy(i, nfiltered, filtered, x, type);
+   // delete[] filtered;
+   // return eng;
+   return energy(i, numneigh, neighs, x, type);
+  }
 
    // int comm_forward;          // size of forward communication (0 if none)
    // int comm_reverse;          // size of reverse communication (0 if none)
